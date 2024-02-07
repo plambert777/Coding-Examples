@@ -1,0 +1,613 @@
+---
+title: "Final Project"
+author: "Parker Lambert"
+date: "2023-11-16"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Name: Parker Lambert
+
+Assignment: Final Homework
+
+Course: QBS119
+
+Due: 11/17/23
+
+# Correlates of Phthalates Exposure
+
+## Libraries
+
+```{r}
+library(tidyverse)
+library(vtable)
+library(car)
+library(ggplot2)
+```
+
+## Load in Data
+
+```{r}
+df <- read.csv("nhanes2009_phthalates.csv")
+df |>
+  dim()#head(3)
+```
+
+## Removed Patients
+
+Only include adults 21 years of age or older.
+
+Make sure to report where/why we lose participants (e.g., how many participants are excluded because they are missing one or more of the variables of interest). It is critical to report why participants were excluded for reproducibility.
+
+Exclude anyone missing the primary dependent and independent variables of interest -- urinary metabolites, BMI, and diet data -- do not make a \"missing\" category. Specifically, the analytical sample should be limited to those with data on each urinary metabolite, BMI, and each diet measure. That way the inference from any one analysis applies to same overall sample. Make sure the sociodemographic summaries also reflect that same analytic dataset.
+
+```{r}
+# remove patients under the age of 21
+df <- df |>
+  filter(RIDAGEYR>=21)
+# remove anyone missing urinary metabolites
+df <- df |>
+  filter(!is.na(URXMBP))
+df <- df |>
+  filter(!is.na(URXMZP))
+# remove anyone missing BMI
+df <- df |>
+  filter(!is.na(BMXBMI))
+df <- df |>
+  filter(!is.na(BMXBMICAT))
+# remove anyone missing diet data which is also as 9999
+# First convert all instances of 9999 to na
+df <- df |> 
+  mutate(DBD900 = replace(DBD900, DBD900 == 9999, NA)) |>
+  mutate(DBD905 = replace(DBD905, DBD905 == 9999, NA)) |>
+  mutate(DBD910 = replace(DBD910, DBD910 == 9999, NA))
+df <- df |> 
+  filter(!is.na(DBD900)) |>
+  filter(!is.na(DBD905)) |>
+  filter(!is.na(DBD910))
+# check dimentions
+df |> 
+  dim()
+```
+
+*We were asked to remove all patients under the age of 21 from our dataset this resulted in the rows in the dataset to reduce from 2819 down to 1931. After removing all patients with NA values in URXMBP we were left with 1908 rows. Then we removed all patients with NA values in URXMZP leaving us with 1863 rows. When we removed rows holding NA in our two BMI variables no extra rows were removed. Finally we need to remove all missing values from our 3 diet columns. In these columns NA could be in as NA or as 9999 so first we have to convert the 9999 to NA then remove NA. This dropped our row count down to 1843.*
+
+## Format Factor Variables
+
+First we need to change how BMXBMICAT is stored so that we can convert it to factor. **ALSO THE DATA DICTIONARY IS ACTUAL INCORRECT FOR BMXBMICAT IT SAYS THERE IS A GROUP 5 BUT THIS IS NOT THE CASE IT SKIPPS GROUP 2.**
+
+```{r}
+# store BMXBMICAT as a single integer
+df <- df |> 
+  mutate(BMXBMICAT = as.numeric(str_extract(BMXBMICAT, "\\d+")))
+```
+
+Now we can follow the data dictionary and create our factors/ catagories.
+
+```{r}
+df <- df |>
+  mutate(RIAGENDR = factor(RIAGENDR, levels = c(1,2), labels = c("Male",  "Female"))) |>
+  mutate(RIDRETH1 = factor(RIDRETH1, levels = c(1, 2, 3, 4, 5),
+                           labels = c("Mexican American", 
+                                      "Other Hispanic", 
+                                      "Non-Hispanic White", 
+                                      "Non-Hispanic Black", 
+                                      "Other Race - Including Multi-Racial"))) |>
+  mutate(DMDEDUC2 = factor(DMDEDUC2, levels = c(1, 2, 3, 4, 5, 7, 9),
+                            labels = c("Less Than 9th Grade", 
+                                       "Some high school, no diploma", 
+                                       "High School Grad/GED or Equivalent",
+                                       "Some College or AA degree", 
+                                       "College Graduate or above", 
+                                       "Refused", 
+                                       "Don't Know"))) |>
+  mutate(INDHHIN2 = factor(INDHHIN2, levels = c(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 13, 14, 15, 77, 99),
+                         labels = c("$ 0 to $ 4,999", 
+                                    "$ 5,000 to $ 9,999", 
+                                    "$10,000 to $14,999", 
+                                    "$15,000 to $19,999",
+                                    "$20,000 to $24,999", 
+                                    "$25,000 to $34,999", 
+                                    "$35,000 to $44,999",
+                                    "$45,000 to $54,999",
+                                    "$55,000 to $64,999", 
+                                    "$65,000 to $74,999", 
+                                    "Over $20,000", 
+                                    "Under $20,000",
+                                    "$75,000 to $99,999", 
+                                    "$100,000 and Over", 
+                                    "Refused", 
+                                    "Don't know"))) |>
+  mutate(BMXBMICAT = factor(BMXBMICAT, levels = c(1, 0, 2, 3, 4),
+                               labels = c("Underweight: BMI <18 kg/m2", 
+                                          "Healthy weight: BMI 18 to <25 kg/m2",
+                                          "With overweight: BMI 25 to <30 kg/m2", 
+                                          "With class 1 obesity: BMI 30 to <35 kg/m2",
+                                          "With class 2 or higher obesity: BMI >=35 kg/m2")))
+```
+
+## Summarize the Dataset
+
+### Numerical Summary 
+
+For the final I am going to implement one of my favorite packages from undergrad vtable. This allows us to get a summary of all our variables in one table.
+
+```{r}
+df |>
+  st()
+```
+
+### Visual Summaries
+
+#### Continuous Variables
+
+Lets first look at **Age**
+
+```{r}
+par(mfrow=c(1,3))
+boxplot(df$RIDAGEYR)
+hist(df$RIDAGEYR)
+qqPlot(df$RIDAGEYR)
+```
+
+*From the Visual Summary above we can see that the distribution is roughly uniform.*
+
+Now lets look at **Ratio of Family income to Poverty**. This is capped at 5 so lets keep that in mind when looking at the data.
+
+```{r}
+par(mfrow=c(1,3))
+boxplot(df$INDFMPIR)
+hist(df$INDFMPIR)
+qqPlot(df$INDFMPIR)
+```
+
+*From the Visual Summary above we can see that the distribution is roughly skewed positive however since all measures above 5 are converted to 5 we see a spike for five.*
+
+**Mono-n-butyl phthalate (ng/mL)**
+
+```{r}
+par(mfrow=c(1,3))
+boxplot(df$URXMBP)
+hist(df$URXMBP)
+qqPlot(df$URXMBP)
+```
+
+*From the Visual Summary above we can see that the distribution is skewed positive which we can now log transform to test if it is normal on a log scale.*
+
+```{r}
+par(mfrow=c(1,3))
+boxplot(log(df$URXMBP))
+hist(log(df$URXMBP))
+qqPlot(log(df$URXMBP))
+```
+
+*From the Visual Summary above we can see that the distribution when log transformed is normal.*
+
+**Mono-benzyl phthalate (ng/mL)**
+
+```{r}
+par(mfrow=c(1,3))
+boxplot(df$URXMZP)
+hist(df$URXMZP)
+qqPlot(df$URXMZP)
+```
+
+*From the Visual Summary above we can see that the distribution is skewed positive which we can now log transform to test if it is normal on a log scale.*
+
+```{r}
+par(mfrow=c(1,3))
+boxplot(log(df$URXMZP))
+hist(log(df$URXMZP))
+qqPlot(log(df$URXMZP))
+```
+
+*From the Visual Summary above we can see that the distribution when log transformed is normal.*
+
+**Number of meals from a fast food or pizza place in the past week**
+
+```{r}
+par(mfrow=c(1,3))
+boxplot(df$DBD900)
+hist(df$DBD900)
+qqPlot(df$DBD900)
+```
+
+*From the Visual Summary above we can see that the distribution is skewed positive which we can now log transform to test if it is normal on a log scale.*
+
+```{r}
+par(mfrow=c(1,3))
+boxplot(log(df$DBD900))
+hist(log(df$DBD900))
+#qqPlot(log(df$DBD900))
+```
+
+*From the Visual Summary above we can see that the distribution when log transformed is still skewed postive.*
+
+**Number of ready-to-eat foods in past 30 days**
+
+```{r}
+par(mfrow=c(1,3))
+boxplot(df$DBD905)
+hist(df$DBD905)
+qqPlot(df$DBD905)
+```
+
+*From the Visual Summary above we can see that the distribution is skewed positive which we can now log transform to test if it is normal on a log scale.*
+
+```{r}
+par(mfrow=c(1,3))
+boxplot(log(df$DBD905))
+hist(log(df$DBD905))
+#qqPlot(log(df$DBD905))
+```
+
+*From the Visual Summary above we can see that the distribution when log transformed is still skewed positive.*
+
+**Number of frozen meals/pizza in past 30 days**
+
+```{r}
+par(mfrow=c(1,3))
+boxplot(df$DBD910)
+hist(df$DBD910)
+qqPlot(df$DBD910)
+```
+
+*From the Visual Summary above we can see that the distribution is skewed positive which we can now log transform to test if it is normal on a log scale.*
+
+```{r}
+par(mfrow=c(1,3))
+boxplot(log(df$DBD910))
+hist(log(df$DBD910))
+#qqPlot(log(df$DBD910))
+```
+
+*From the Visual Summary above we can see that the distribution when log transformed is still skewed positive.*
+
+**Now for BMI (BMXBMI)**
+
+```{r}
+par(mfrow=c(1,3))
+boxplot(df$BMXBMI)
+hist(df$BMXBMI)
+qqPlot(df$BMXBMI)
+```
+
+*From the graph above we can see it the data exhibits a positive skew so next we will try a log transformation.*
+
+```{r}
+par(mfrow=c(1,3))
+boxplot(log(df$BMXBMI))
+hist(log(df$BMXBMI))
+qqPlot(log(df$BMXBMI))
+```
+
+*Now the log BMXBMI data appears normal.*
+
+## Research Question 1
+
+Are urinary concentrations of phthalate metabolites associated with BMI among adults in the US? (BMI is being used as a proxy for adiposity)
+
+### a)
+
+Is that association linear? Compare the two phthalate metabolites to BMI when BMI is\
+treated as continuous and when BMI when treated as categorical. Report a standardized effect size between each metabolite and BMI for when BMI is continuous. However, the PI will need to know what model may be better to use as the final model for each metabolite -- BMI as continuous or BMI as categorical? Do the results support one model over the other?
+
+##### Continuous BMI vs our two Phthalate's 
+
+Mono-n-butyl phthalate (ng/mL)
+
+From our summary above we know that it would not be proper to do this test without a log transform on the URXMBP variable.
+
+```{r}
+lm(log(df$URXMBP) ~ df$BMXBMI) |>
+  summary()
+```
+
+```{r,warning=FALSE}
+ggplot(df, aes(df$BMXBMI,log(df$URXMBP))) +
+  geom_point() +
+  geom_smooth(method = "lm",se=F)
+```
+
+Mono-benzyl phthalate (ng/mL)
+
+```{r}
+lm(log(df$URXMZP) ~ df$BMXBMI) |>
+  summary()
+```
+
+```{r,warning=FALSE}
+ggplot(df, aes(df$BMXBMI,log(df$URXMZP))) +
+  geom_point() +
+  geom_smooth(method = "lm",se=F)
+```
+
+*The summaries from the two linear models tell us that there is a statistically significant linear association between the two Phthalate's and continuous BMI. For every one increase in Mono-n-butyl phthalate (ng/mL) aka URXMBP the BMI prediction increases by 0.022. For every one increase in Mono-benzyl phthalate (ng/mL) aka URXMZP the BMI prediction increases by 0.0186. Also the Intercept for both models is statistically significant.*
+
+##### Categorical BMI vs our two Phthalate's 
+
+Mono-n-butyl phthalate (ng/mL)
+
+```{r}
+lm(log(df$URXMBP) ~ df$BMXBMICAT) |>
+  summary()
+```
+
+Mono-benzyl phthalate (ng/mL)
+
+```{r}
+lm(log(df$URXMZP) ~ df$BMXBMICAT) |>
+  summary()
+```
+
+*For both our categorical BMI models above the intercepts are statistically significant. For our first model we also have one statistically significant association this is for the significantly obese group. When a person is in the significantly obese group it is the prediction for Phthalats increases by 0.65. The second model has no other statistically significant attributes other than the intercept.*
+
+*The results support the association between the continuous variables more than the categorical. However the R squared for both is low. Both of these models account for less than 2% of the variation in the phthalate.*
+
+### b)
+
+Does gender modify the association between BMI and urinary metabolites? (Gender is\
+the proxy for circulating sex hormones. Admittedly, NHANES captured self-reported\
+gender only and this is binary; this variable may more reflect biological sex
+
+#### i)
+
+Use BMI as categorical for this analysis. Do not use BMI as continuous for the\
+effect modification analysis (in practice we can do that, but for this assignment\
+we won\'t).
+
+Mono-n-butyl phthalate (ng/mL)
+
+```{r}
+lm(log(df$URXMBP) ~ df$BMXBMICAT : df$RIAGENDR) |>
+  summary()
+```
+
+*From above we can see that Gender absolutely has an interaction with BMI by category. The linear model went from having only one statistically significant interaction to all but one interaction being statistically significant.*
+
+Mono-benzyl phthalate (ng/mL)
+
+```{r}
+lm(log(df$URXMZP) ~ df$BMXBMICAT : df$RIAGENDR) |>
+  summary()
+```
+
+*From above we can see that Gender absolutely has an interaction with BMI by category. The linear model went from having only one statistically significant interaction to all but one interaction being statistically significant.*
+
+## Research Question 2
+
+Are urinary concentrations of phthalate metabolites associated with a) past week intake of fast food/pizza, b) past 30-day intake of ready-to-eat foods, or c) past 30-day intake of frozen meals/frozen pizza among adults in the US?
+
+### a)
+
+Are those associations linear? Compare the two metabolites to each dietary intake\
+measure with dietary intake treated as continuous and also as categorical.
+
+### **Mono-n-butyl phthalate (ng/mL)**
+
+We still need to log transform to be normal
+
+**by past week intake of fast food/pizza**
+
+Continuous
+
+```{r}
+lm(log(df$URXMBP) ~ df$DBD900) |>
+  summary()
+```
+
+*The association is not statistically significant.*
+
+Categorical
+
+```{r}
+lm(log(df$URXMBP) ~ as.factor(df$DBD900)) |>
+  summary()
+```
+
+*By level the association at any level is not statistically significant.*
+
+**by past 30-day intake of ready-to-eat foods**
+
+Continuous
+
+```{r}
+lm(log(df$URXMBP) ~ df$DBD905) |>
+  summary()
+```
+
+*The association is not statistically significant.*
+
+Categorical
+
+```{r}
+lm(log(df$URXMBP) ~ as.factor(df$DBD905)) |>
+  summary()
+```
+
+*By level the association at any level is not statistically significant besides level 4.*
+
+**by past 30-day intake of frozen meals/frozen pizza**
+
+Continuous
+
+```{r}
+lm(log(df$URXMBP) ~ df$DBD910) |>
+  summary()
+```
+
+*The association is not statistically significant.*
+
+Categorical
+
+```{r}
+lm(log(df$URXMBP) ~ as.factor(df$DBD910)) |>
+  summary()
+```
+
+*By level the association at any level is not statistically significant.*
+
+### **Mono-benzyl phthalate (ng/mL)**
+
+We still need to log transform to be normal
+
+**by past week intake of fast food/pizza**
+
+Continuous
+
+```{r}
+lm(log(df$URXMZP) ~ df$DBD900) |>
+  summary()
+```
+
+*The association is statistically significant for every one increase in fast food intake the Mono-benzyl phthalate increases by 0.207!*
+
+For fun I want to graph it.
+
+```{r,warning=FALSE}
+ggplot(df, aes(df$DBD900,log(df$URXMZP))) +
+  geom_point() +
+  geom_smooth(method = "lm",se=F)
+```
+
+Categorical
+
+```{r}
+lm(log(df$URXMZP) ~ as.factor(df$DBD900)) |>
+  summary()
+```
+
+*Above we can see that there is a statistically significant association at every factor level of fast food intake.*
+
+**by past 30-day intake of ready-to-eat foods**
+
+Continuous
+
+```{r}
+lm(log(df$URXMZP) ~ df$DBD905) |>
+  summary()
+```
+
+*The association is not statistically significant.*
+
+Categorical
+
+```{r}
+lm(log(df$URXMZP) ~ as.factor(df$DBD905)) |>
+  summary()
+```
+
+*Here there is one level at 16 ready to eat foods per week that has a statistically significant association. However all the others do not.*
+
+**by past 30-day intake of frozen meals/frozen pizza**
+
+Continuous
+
+```{r}
+lm(log(df$URXMZP) ~ df$DBD910) |>
+  summary()
+```
+
+*The association is statistically significant for every one increase in frozen meal intake the Mono-benzyl phthalate increases by 0.0433!*
+
+For fun I want to graph it.
+
+```{r,warning=FALSE}
+ggplot(df, aes(df$DBD910,log(df$URXMZP))) +
+  geom_point() +
+  geom_smooth(method = "lm",se=F)
+```
+
+Categorical
+
+```{r}
+lm(log(df$URXMZP) ~ as.factor(df$DBD910)) |>
+  summary()
+```
+
+*Above we can see that there is a statistically significant association at every factor level of fast food intake.*
+
+## Dietary Intake and BMI
+
+Finally, please examine the associations (with hypothesis testing) between each dietary intake\
+measure and BMI. Include hypothesis testing. Please decide how to best complete those\
+comparisons. Those findings will help me determine the next steps
+
+### Continuous BMI (BMXBMI)
+
+**by past week intake of fast food/pizza**
+
+```{r}
+lm(log(df$BMXBMI) ~ df$DBD900) |>
+  summary()
+```
+
+*The association is statistically significant for every one increase in fast food intake the BMXBMI increases by 0.003758!*
+
+```{r,warning=FALSE}
+ggplot(df, aes(df$DBD900,log(df$BMXBMI))) +
+  geom_point() +
+  geom_smooth(method = "lm",se=F)
+```
+
+**by past 30-day intake of ready-to-eat foods**
+
+```{r}
+lm(log(df$BMXBMI) ~ df$DBD905) |>
+  summary()
+```
+
+*The association is not statistically significant.*
+
+**by past 30-day intake of frozen meals/frozen pizza**
+
+```{r}
+lm(log(df$BMXBMI) ~ df$DBD910) |>
+  summary()
+```
+
+*The association is statistically significant for every one increase in fast food intake the BMXBMI increases by 0.0007!*
+
+```{r, warning=FALSE}
+ggplot(df, aes(df$DBD910,log(df$BMXBMI))) +
+  geom_point() +
+  geom_smooth(method = "lm",se=F)
+```
+
+### Categorical BMI (BMXBMICAT)
+
+**by past week intake of fast food/pizza**
+
+```{r}
+lm(df$DBD900 ~ df$BMXBMICAT) |>
+  summary()
+```
+
+*The model above found an association with every category besides the BMI greater than 35 group. This group had smaller sample size which could account for the larger standard error.*
+
+**by past 30-day intake of ready-to-eat foods**
+
+```{r}
+lm(df$DBD905 ~ df$BMXBMICAT) |>
+  summary()
+```
+
+*None of the levels were statistically significant.*
+
+**by past 30-day intake of frozen meals/frozen pizza**
+
+```{r}
+lm(df$DBD910 ~ df$BMXBMICAT) |>
+  summary()
+```
+
+*None of the levels were statistically significant.*
+
+## Summary
+
+First we removed all instances that had missing data this lowered our number of rows to 1843. Then we numerically and visually summarized the data. For the first research question we found that there are is a statistically significant linear association between our continuous BMI BMXBMI and our two phthalates. However their R squared are both less than 2%. For part b we found that gender was a statistically significant interaction for the categorical BMI BMXBMICAT. For research question 2 we found that our second Phthalate was more promising, It showed a statistically significant linear association with fast food intake and frozen meal intake. Finally for our look at Dietary Intake and BMI we found that fast food intake had a statistically significant linear association with continuous BMI and categorical BMI. Also frozen meal intake had a statistically significant linear association with continuous BMI.
