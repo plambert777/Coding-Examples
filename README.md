@@ -6,7 +6,7 @@ Is a repository for examples of me using various coding techniques
   <p>ted_talks_eda EDA in Python on a ted talks data set</p>
 </details>
 <details>
-  <summary>Linear Models</summary>
+  <summary>LinearModels</summary>
   <p>Uploaded Homework Assignment for featuring data wrangling techniques and inference using linear models</p>
 </details>
 <details>
