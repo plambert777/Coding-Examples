@@ -2,13 +2,18 @@
 Is a repository for examples of me using various coding techniques
 ## Folder Breakdown
 <details>
+  <summary>EDA - Exploratory Data Analysis</summary>
+  <p>ted_talks_eda EDA in Python on a ted talks data set</p>
+</details>
+<details>
+  <summary>Linear Models</summary>
+  <p>Uploaded Homework Assignment for featuring data wrangling techniques and inference using linear models</p>
+</details>
+<details>
   <summary>PCA - Pricipal Components Analysis</summary>
   <p>Uploaded Homework Assignment for using PCA techniques on Genetic SNP data</p>
 </details>
-<details>
-  <summary>EDA - Exploratory data analysis</summary>
-  <p>ted_talks_eda EDA in Python on a ted talks data set</p>
-</details>
+
 
 ## My Links!
 <details>
